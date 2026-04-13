@@ -2,8 +2,8 @@ name: Daily Stock Report
 
 on:
   schedule:
-    - cron: '0 10 * * 1-5'  # 每周一至周五 UTC 10:00 运行（北京时间 18:00）
-  workflow_dispatch:        # 允许手动触发
+    - cron: '0 10 * * 1-5'  # UTC 10:00（北京时间 18:00）
+  workflow_dispatch:
 
 jobs:
   generate-report:
@@ -19,56 +19,15 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install yfinance pandas openpyxl
+          pip install yfinance pandas
 
-      - name: Run stock analysis script
-        env:
-          TZ: Asia/Shanghai
-        run: |
-          python -c "
-import yfinance as yf
-import pandas as pd
-from datetime import datetime, timedelta
-
-# 示例：获取上证指数 (000001.SS)
-tickers = ['000001.SS', 'AAPL', 'TSLA']
-data = {}
-
-for ticker in tickers:
-    try:
-        stock = yf.Ticker(ticker)
-        hist = stock.history(period='5d')
-        if not hist.empty:
-            latest = hist.iloc[-1]
-            data[ticker] = {
-                'Date': latest.name.strftime('%Y-%m-%d'),
-                'Close': round(latest['Close'], 2),
-                'Volume': int(latest['Volume'])
-            }
-    except Exception as e:
-        data[ticker] = {'Error': str(e)}
-
-# 生成报告
-report = f'''# Daily Stock Report
-Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} (Beijing Time)
-
-| Ticker | Date | Close | Volume |
-|--------|------|-------|--------|
-'''
-for ticker, info in data.items():
-    if 'Error' not in info:
-        report += f'| {ticker} | {info[\"Date\"]} | {info[\"Close\"]} | {info[\"Volume\"]:,} |\n'
-    else:
-        report += f'| {ticker} | Error | {info[\"Error\"]} | - |\n'
-
-with open('report.md', 'w', encoding='utf-8') as f:
-    f.write(report)
-"
+      - name: Run stock analysis
+        run: python generate_report.py
 
       - name: Commit and push report
         run: |
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
           git add report.md
-          git commit -m "Update daily stock report [$(date)]" || echo "No changes to commit"
+          git commit -m "Update daily stock report [$(date +'%Y-%m-%d')]" || echo "No changes"
           git push
