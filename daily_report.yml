@@ -1,0 +1,71 @@
+name: Daily Stock Report
+
+on:
+  schedule:
+    - cron: '0 0 * * *'  # UTC时间每天0点 = 北京时间8点
+  workflow_dispatch:     # 允许手动触发
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: |
+          pip install requests pandas yfinance openai
+
+      - name: Run stock analysis
+        env:
+          LLM_PROVIDER: ${{ secrets.LLM_PROVIDER }}
+          ZHIPU_API_KEY: ${{ secrets.ZHIPU_API_KEY }}
+          STOCK_LIST: ${{ secrets.STOCK_LIST }}
+          NOTIFY_URL: ${{ secrets.NOTIFY_URL }}
+        run: |
+          python -c "
+import os, requests, yfinance as yf
+from datetime import datetime
+
+# 获取环境变量
+llm_provider = os.getenv('LLM_PROVIDER')
+zhipu_key = os.getenv('ZHIPU_API_KEY')
+stock_list = os.getenv('STOCK_LIST', '').split(',')
+notify_url = os.getenv('NOTIFY_URL')
+
+if not notify_url or not stock_list[0]:
+    exit('❌ Missing config')
+
+# 获取股价
+prices = []
+for ticker in stock_list:
+    try:
+        data = yf.Ticker(ticker).history(period='1d')
+        if not data.empty:
+            price = data['Close'][-1]
+            change = (data['Close'][-1] / data['Open'][-1] - 1) * 100
+            prices.append(f'{ticker}: {price:.2f} ({change:+.1f}%)')
+    except:
+        prices.append(f'{ticker}: ❌')
+
+# 构建消息
+title = f'【每日投资简报｜{datetime.now().strftime(\"%Y-%m-%d\")}】'
+content = '\\n'.join([
+    title,
+    '',
+    '📈 持仓表现：',
+    '\\n'.join(prices),
+    '',
+    '🔍 AI摘要：今日无重大新闻（演示模式）',
+    '',
+    '📅 下次报告：明天 08:00'
+])
+
+# 推送到微信
+requests.post(notify_url, data={'title': title, 'desp': content})
+print('✅ Report sent!')
+"
